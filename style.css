@@ -445,23 +445,6 @@ a {
     padding-right: 35px;
 }
 
-/* Password Field */
-.password-input-wrapper {
-    position: relative;
-}
-
-.password-input-wrapper input {
-    width: calc(100% - 30px); 
-    padding-right: 40px;
-}
-
-.eye-icon {
-    position: absolute;
-    right: 15px;
-    top: 50%;
-    transform: translateY(-50%);
-    cursor: pointer;
-}
 
 /* Utility Class */
 .hidden-form {
