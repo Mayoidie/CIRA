@@ -80,7 +80,9 @@
                 </select>
 
                 <label for="signUpStudentID">Student ID</label>
-                <input type="text" id="signUpStudentID" placeholder="e.g., 23-3302" required>
+                <input type="text" id="signUpStudentID" placeholder="e.g., 23-3302" required
+                    pattern="[0-9]{2}-[0-9]{4}"
+                    title="Student ID must be in the format XX-XXXX (e.g., 23-3302)">
 
                 <label for="signUpPassword">Password</label>
                 <input type="password" id="signUpPassword" placeholder="Create a password" required>
@@ -95,7 +97,6 @@
 
     <div id="email-sent-modal" class="email-sent-popup-backdrop hidden">
         <div class="email-sent-popup-content">
-            <svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="#8a2be2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10s-4 9-10 9-10-9-10-9 4-9 10-9 10 9 10 9Z"></path><circle cx="12" cy="10" r="3"></circle></svg>
             <h2 class="email-sent-title">Verify Your Email Address</h2>
             <p class="email-sent-message">
                 We've sent an email to **<span id="display-signup-email"></span>**.
