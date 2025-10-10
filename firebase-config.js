@@ -1,4 +1,4 @@
-// firebase-config.js - FIXED VERSION
+// firebase-config.js - FINAL WITH EMAIL VERIFICATION
 
 // Import the functions you need from the SDKs you need
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
@@ -6,7 +6,8 @@ import {
     getAuth, 
     createUserWithEmailAndPassword, 
     signInWithEmailAndPassword,
-    signOut 
+    signOut,
+    sendEmailVerification // <-- NEW IMPORT
 } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
 import { 
     getFirestore, 
@@ -35,11 +36,13 @@ export const db = getFirestore(app);
 
 
 // 4. Core Authentication Functions
-// NOTE: Removed 'export' from function definitions here.
 
 async function signUpUser(email, password, name, role, studentId = 'N/A') {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
+
+    // Send the verification email immediately after creation
+    await sendEmailVerification(user); // <-- NEW VERIFICATION CALL
 
     await setDoc(doc(db, "users", user.uid), {
         uid: user.uid,
@@ -62,6 +65,15 @@ async function signOutUser() {
     await signOut(auth); 
 }
 
-// 5. Consolidated Export List (FIX)
-// Export all three custom functions at the end to prevent module conflicts.
-export { signUpUser, signInUser, signOutUser };
+async function sendEmailVerificationLink(user) {
+    if (user) {
+        // Firebase handles rate limiting internally
+        await sendEmailVerification(user); 
+        return true;
+    }
+    return false;
+}
+
+
+// Consolidated Export List
+export { signUpUser, signInUser, signOutUser, sendEmailVerificationLink };

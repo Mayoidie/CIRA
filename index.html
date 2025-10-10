@@ -17,7 +17,7 @@
             <a href="#" class="nav-link">About</a>
             <a href="#" class="nav-link">Contact</a>
         </nav>
-        <img src="Assets/user_icon.svg" alt="Sign In" class="user-icon trigger-modal" data-form="signin">
+        <img src="Assets/profile.png" alt="Sign In" class="user-icon trigger-modal" data-form="signin">
     </header>
 
     <main class="hero-section">
@@ -43,7 +43,7 @@
             <span class="close-btn">&times;</span>
             <div class="auth-header">
                 <div class="auth-logo">
-                    <img src="Assets/CIRA_Icon.svg" alt="CIRA Icon">
+                    <img src="Assets/MainLogoNavyBlue.png" alt="CIRA Icon">
                 </div>
                 <h2 id="auth-title">Welcome Back!</h2>
                 <p class="subtitle">ComLab Issue Reporting Application</p>
@@ -96,6 +96,19 @@
 
                 <button type="submit" class="btn btn-primary full-width">Create Account →</button>
             </form>
+        </div>
+    </div>
+
+    <div id="email-sent-modal" class="email-sent-popup-backdrop hidden">
+        <div class="email-sent-popup-content">
+            <svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="#8a2be2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10s-4 9-10 9-10-9-10-9 4-9 10-9 10 9 10 9Z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+            <h2 class="email-sent-title">Verify Your Email Address</h2>
+            <p class="email-sent-message">
+                We've sent an email to **<span id="display-signup-email"></span>**.
+                Please check your inbox and spam folder to verify your account.
+            </p>
+            <button id="goToLoginBtn" class="btn btn-primary">Go to Login</button>
+            <button id="resendEmailBtn" class="btn btn-secondary">Resend Email</button>
         </div>
     </div>
 

@@ -1,4 +1,4 @@
-// student.js - Handles student dashboard logic and security.
+// student.js - FINAL WITH EMAIL VERIFICATION CHECK
 
 import { auth, db, signOutUser } from './firebase-config.js';
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
@@ -8,13 +8,22 @@ import { doc, getDoc } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-
 // --- Navigation Guard and User Details Setup ---
 
 onAuthStateChanged(auth, async (user) => {
-    // CRITICAL: Get elements here. If one is null, the script must check for it later.
+    // CRITICAL: Get elements here.
     const userNameDisplay = document.getElementById('userNameDisplay');
     const userRoleDisplay = document.getElementById('userRoleDisplay');
     const welcomeUserName = document.getElementById('welcomeUserName');
     const expectedRole = 'student';
     
     if (user) {
+        
+        // <-- NEW: EMAIL VERIFICATION CHECK
+        if (!user.emailVerified) {
+            console.warn("Access denied. User email is not verified. Signing out.");
+            await signOutUser();
+            window.location.href = 'index.html';
+            return; 
+        }
+
         try {
             const userRef = doc(db, "users", user.uid);
             const userSnap = await getDoc(userRef);
@@ -32,19 +41,13 @@ onAuthStateChanged(auth, async (user) => {
                     return;
                 }
                 
-                // 🚀 FIX: Defensive UI Update. Check if the element exists (is not null) before updating.
+                // 🚀 FIX: Defensive UI Update (Checks if element exists before updating)
                 if (userNameDisplay) {
                     userNameDisplay.textContent = name;
-                } else {
-                    console.warn("UI Warning: Element with ID 'userNameDisplay' not found.");
                 }
-
                 if (userRoleDisplay) {
                     userRoleDisplay.textContent = 'Student';
-                } else {
-                    console.warn("UI Warning: Element with ID 'userRoleDisplay' not found.");
                 }
-
                 if (welcomeUserName) {
                     welcomeUserName.textContent = name.split(' ')[0] || 'Student';
                 }
@@ -55,9 +58,8 @@ onAuthStateChanged(auth, async (user) => {
                 window.location.href = 'index.html';
             }
         } catch (error) {
-            // Error handling block, kept for debugging
+            // Error handling block
             console.error("RAW FIREBASE ERROR CODE:", error.code);
-            console.error("RAW FIREBASE ERROR MESSAGE:", error.message);
             console.error("FULL ERROR OBJECT:", error); 
             
             alert("Failed to load user details. Please try logging in again.");

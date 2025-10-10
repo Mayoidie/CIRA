@@ -1,13 +1,12 @@
-// script.js
-
 // 1. IMPORT FIREBASE AUTH & FIRESTORE FUNCTIONS
-import { signUpUser, signInUser, db } from './firebase-config.js';
+// Double check: sendEmailVerificationLink must be in your firebase-config.js export list!
+import { signUpUser, signInUser, signOutUser, sendEmailVerificationLink, db } from './firebase-config.js'; 
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 
 
 document.addEventListener('DOMContentLoaded', () => {
 
-    // --- Select Elements ---
+    // --- Select Existing Elements (These are safe) ---
     const modal = document.getElementById('auth-modal');
     const triggers = document.querySelectorAll('.trigger-modal');
     const closeBtn = document.querySelector('.close-btn');
@@ -16,12 +15,37 @@ document.addEventListener('DOMContentLoaded', () => {
     const signUpForm = document.getElementById('sign-up-form');
     const authTitle = document.getElementById('auth-title');
 
-    // --- Modal & Tab Logic ---
+    // --- NEW POPUP ELEMENTS (Initialize safely) ---
+    // If these elements aren't in index.html yet, they will be null/undefined.
+    const emailSentModal = document.getElementById('email-sent-modal');
+    const displaySignupEmail = document.getElementById('display-signup-email');
+    const goToLoginBtn = document.getElementById('goToLoginBtn');
+    const resendEmailBtn = document.getElementById('resendEmailBtn');
+    
+    let lastSignedUpUser = null; 
 
+    // --- Modal & Tab Logic (Existing functions) ---
+    function showModal(formType) {
+        modal.style.display = 'flex';
+        // ... (rest of showModal)
+        if (formType === 'signup') {
+            showTab('sign-up-form');
+        } else {
+            showTab('sign-in-form');
+        }
+    }
+
+    function closeModal() {
+        if(modal) { // Added null check for safety
+            modal.style.display = 'none';
+        }
+    }
+    
     function showTab(targetFormId) {
+        // ... (existing implementation)
         signInForm.classList.add('hidden-form');
         signUpForm.classList.add('hidden-form');
-
+        // ... (rest of showTab)
         tabButtons.forEach(btn => btn.classList.remove('active'));
 
         if (targetFormId === 'sign-in-form') {
@@ -35,67 +59,94 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function openModal(e) {
-        e.preventDefault();
-        if (!modal) return;
-        
-        modal.style.display = 'flex';
-        document.body.style.overflow = 'hidden';
-
-        const formToOpen = e.currentTarget.getAttribute('data-form');
-        if (formToOpen === 'signup') {
-            showTab('sign-up-form');
-        } else {
-            showTab('sign-in-form');
-        }
-    }
-
-    function closeModal() {
-        if (!modal) return;
-        modal.style.display = 'none';
-        document.body.style.overflow = 'auto';
-    }
-
-    // Event Listeners for Modal/Tabs
     triggers.forEach(trigger => {
-        trigger.addEventListener('click', openModal);
+        trigger.addEventListener('click', (e) => {
+            e.preventDefault();
+            const formType = trigger.getAttribute('data-form');
+            showModal(formType);
+        });
     });
 
     if (closeBtn) {
         closeBtn.addEventListener('click', closeModal);
     }
 
-    window.addEventListener('click', function(event) {
-        if (event.target === modal) {
+    tabButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const target = btn.getAttribute('data-target');
+            showTab(target);
+        });
+    });
+
+    // --- NEW POPUP LOGIC ---
+    function showEmailSentPopup(email, user) {
+        // Critical safety check
+        if (!emailSentModal || !displaySignupEmail) {
+            // Fallback to old behavior if new UI elements are missing
+            alert("Account created! Please check your email inbox (and spam folder) for a verification link before you can sign in.");
             closeModal();
+            showTab('sign-in-form');
+            return;
         }
-    });
 
-    tabButtons.forEach(button => {
-        button.addEventListener('click', function() {
-            const targetId = this.getAttribute('data-target');
-            showTab(targetId);
+        // 1. Store the user object for resend functionality
+        lastSignedUpUser = user; 
+        
+        // 2. Update the email text display
+        displaySignupEmail.textContent = email;
+        
+        // 3. Hide the sign-in/sign-up modal
+        closeModal(); 
+
+        // 4. Show the new pop-up
+        emailSentModal.classList.remove('hidden');
+    }
+    
+    function closeEmailSentPopup() {
+        if(emailSentModal) {
+            emailSentModal.classList.add('hidden');
+        }
+    }
+
+    // --- Event Listeners for NEW POPUP (Added conditional checks here) ---
+    if(goToLoginBtn) {
+        goToLoginBtn.addEventListener('click', () => {
+            closeEmailSentPopup();
+            showModal('signin'); 
         });
-    });
-
-    // Toggle password visibility
-    document.querySelectorAll('.eye-icon').forEach(eye => {
-        eye.addEventListener('click', () => {
-            const input = eye.previousElementSibling;
-            input.type = input.type === 'password' ? 'text' : 'password';
+    }
+    
+    if(resendEmailBtn) {
+        resendEmailBtn.addEventListener('click', async () => {
+            if (lastSignedUpUser) {
+                resendEmailBtn.disabled = true;
+                resendEmailBtn.textContent = 'Sending...';
+                try {
+                    await sendEmailVerificationLink(lastSignedUpUser); 
+                    alert("Verification email has been resent successfully!");
+                } catch (error) {
+                    console.error("Resend failed:", error);
+                    alert("Failed to resend email. Please try again.");
+                } finally {
+                    resendEmailBtn.textContent = 'Resend Email';
+                    setTimeout(() => {
+                        resendEmailBtn.disabled = false;
+                    }, 15000);
+                }
+            } else {
+                alert("Error: User session data lost.");
+            }
         });
-    });
+    }
 
-
-    // =======================================================
-    // --- 2. FIREBASE AUTHENTICATION LOGIC ---
-    // =======================================================
-
-    // Sign Up Submission Handler
+    // ----------------------------------------------------------------------
+    // --- 1. SIGN UP LOGIC (Modified to call showEmailSentPopup) ---
+    // ----------------------------------------------------------------------
     if (signUpForm) {
         signUpForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             
+            // Collect form data 
             const name = document.getElementById('signUpName').value;
             const email = document.getElementById('signUpEmail').value;
             const role = document.getElementById('signUpRole').value;
@@ -107,36 +158,39 @@ document.addEventListener('DOMContentLoaded', () => {
                 alert("Passwords do not match.");
                 return;
             }
-
-            if ((role === 'student' || role === 'classrep') && !studentId) {
-                alert("Student ID is required for your selected role.");
-                return;
-            }
+            
+            // UI feedback
+            const submitButton = signUpForm.querySelector('button[type="submit"]');
+            submitButton.disabled = true;
+            submitButton.textContent = 'Creating...';
 
             try {
+                // Call signUpUser which sends the initial verification email
                 const user = await signUpUser(email, password, name, role, studentId);
-                alert(`Account created for ${user.displayName || user.email}! You can now sign in.`);
                 
+                // *** CRITICAL CHANGE: Use the new, safer popup function ***
+                showEmailSentPopup(email, user);
+
                 signUpForm.reset();
-                showTab('sign-in-form'); 
 
             } catch (error) {
-                console.error("Registration Failed:", error);
-                
+                console.error("Sign Up Failed:", error);
                 let errorMessage = error.message;
                 if (error.code === 'auth/email-already-in-use') {
-                    errorMessage = "This email address is already in use.";
-                } else if (error.code === 'auth/weak-password') {
-                    errorMessage = "Password should be at least 6 characters.";
+                    errorMessage = "This email is already registered. Try signing in.";
                 }
+                alert(`Sign Up Failed: ${errorMessage}`);
                 
-                alert(`Registration Failed: ${errorMessage}`);
+            } finally {
+                submitButton.disabled = false;
+                submitButton.textContent = 'Create Account';
             }
         });
     }
 
-
-    // Sign In Submission Handler (Updated for Role-Based Redirection)
+    // ----------------------------------------------------------------------
+    // --- 2. SIGN IN LOGIC (Block Unverified Users) ---
+    // ----------------------------------------------------------------------
     if (signInForm) {
         signInForm.addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -145,38 +199,43 @@ document.addEventListener('DOMContentLoaded', () => {
             const password = document.getElementById('signInPassword').value;
 
             try {
-                // 1. Sign in using Firebase Auth
                 const user = await signInUser(email, password);
-                const uid = user.uid;
+                
+                // CRITICAL: Block sign-in if email is not verified
+                if (!user.emailVerified) {
+                    await signOutUser();
+                    throw new Error("Your email is not verified. Please check your inbox for the verification link and click it to activate your account.");
+                }
 
-                // 2. Fetch the user's role from Firestore
-                const userRef = doc(db, "users", uid);
+                // If verified, proceed to fetch role and redirect
+                const userRef = doc(db, "users", user.uid);
                 const userSnap = await getDoc(userRef);
-
-                let targetPage = 'index.html';
-                let userName = user.email; // Default to email
+                
+                let targetPage = 'index.html'; // Default fallback
+                let userName = 'User';
 
                 if (userSnap.exists()) {
                     const userData = userSnap.data();
-                    const userRole = userData.role;
-                    userName = userData.name || user.email; // Use name if available
-                    
-                    // 3. Determine redirection based on the definitive role
-                    if (userRole === 'admin') {
-                        targetPage = 'admin.html';
-                    } else if (userRole === 'classrep') {
-                        targetPage = 'classrep.html';
-                    } else if (userRole === 'student') {
-                        targetPage = 'student.html';
+                    const role = userData.role;
+                    userName = userData.name || user.email;
+
+                    switch (role) {
+                        case 'admin':
+                            targetPage = 'admin.html';
+                            break;
+                        case 'classrep':
+                            targetPage = 'classrep.html';
+                            break;
+                        case 'student':
+                            targetPage = 'student.html';
+                            break;
+                        default:
+                            console.error("Sign In Failed: Unknown role.", role);
+                            targetPage = 'index.html';
+                            break;
                     }
                 } else {
-                    console.error("User document not found in Firestore for UID:", uid);
-                    alert("Sign In Failed: User profile incomplete. Contact support.");
-                    // Since we can't determine the role, we should sign the user out for security
-                    // Note: 'auth' is not directly imported here, but it can be accessed 
-                    // if you adjust the import or handle this error in a robust way. 
-                    // For a functional code, we assume the redirection below will handle it 
-                    // if the subsequent page load check fails.
+                    console.error("Sign In Failed: User profile incomplete. Contact support.");
                     targetPage = 'index.html'; // Fallback to index
                 }
                 
@@ -193,6 +252,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else if (error.code === 'auth/too-many-requests') {
                     errorMessage = "Access blocked due to too many failed attempts. Try again later.";
                 }
+                // Use the custom error message from the verification check if thrown
                 
                 alert(`Sign In Failed: ${errorMessage}`);
             }
