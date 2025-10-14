@@ -49,6 +49,28 @@ const initializeMockData = () => {
         password: "admin",
         verified: true,
       },
+
+      {
+        id: "student-1",
+        email: "student@plv.edu.ph",
+        firstName: "Juan",
+        lastName: "User",
+        studentId: "00-0000",
+        role: "student",
+        password: "admin",
+        verified: true,
+      },
+
+      {
+        id: "classrep-1",
+        email: "classrep@plv.edu.ph",
+        firstName: "Maria",
+        lastName: "User",
+        studentId: "00-0000",
+        role: "class-representative",
+        password: "admin",
+        verified: true,
+      },
     ];
     localStorage.setItem(
       "cira_users",
