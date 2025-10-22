@@ -25,6 +25,8 @@ const AppContent: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isResending, setIsResending] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
   const { showToast } = useToast();
 
   useEffect(() => {
@@ -62,6 +64,20 @@ const AppContent: React.FC = () => {
     return () => authUnsubscribe();
   }, []);
 
+  useEffect(() => {
+    let timer: NodeJS.Timeout | undefined;
+    if (cooldown > 0) {
+      timer = setInterval(() => {
+        setCooldown((prev) => prev - 1);
+      }, 1000);
+    }
+    return () => {
+      if (timer) {
+        clearInterval(timer);
+      }
+    };
+  }, [cooldown]);
+
   const handleLogout = () => {
     signOut(auth).then(() => {
       setCurrentUser(null);
@@ -72,21 +88,25 @@ const AppContent: React.FC = () => {
   };
 
   const handleResendVerification = () => {
-    if (firebaseUser) {
-      const actionCodeSettings = {
-        url: `${window.location.origin}/login`,
-        handleCodeInApp: true,
-      };
-      sendEmailVerification(firebaseUser, actionCodeSettings)
+    if (firebaseUser && cooldown === 0) {
+      setIsResending(true);
+      // We are now sending a basic verification email to ensure it works without
+      // requiring domain authorization in Firebase settings.
+      sendEmailVerification(firebaseUser)
         .then(() => {
           showToast('A new verification email has been sent to your address.', 'success');
+          setCooldown(180); // 3 minutes
         })
         .catch((error) => {
-            if (error.code === 'auth/too-many-requests') {
-                showToast('Too many requests. Please try again later.', 'error');
-            } else {
-                showToast('Failed to send verification email. Please try again.', 'error');
-            }
+          if (error.code === 'auth/too-many-requests') {
+            showToast('Too many requests. Please wait before trying again.', 'error');
+          } else {
+            console.error("Resend verification error:", error);
+            showToast('Failed to send verification email. Please try again.', 'error');
+          }
+        })
+        .finally(() => {
+          setIsResending(false);
         });
     }
   };
@@ -117,7 +137,7 @@ const AppContent: React.FC = () => {
         <SignupPage
           onSignupSuccess={(email) => {
             if (auth.currentUser) {
-                setFirebaseUser(auth.currentUser)
+              setFirebaseUser(auth.currentUser);
             }
             setCurrentPage('verification');
           }}
@@ -130,9 +150,11 @@ const AppContent: React.FC = () => {
           email={firebaseUser.email || ''}
           onResendVerification={handleResendVerification}
           onReturnToLogin={() => {
-              signOut(auth); // Log out the user before returning to login
-              setCurrentPage('login');
+            signOut(auth);
+            setCurrentPage('login');
           }}
+          isResending={isResending}
+          cooldown={cooldown}
         />
       )}
 
