@@ -71,8 +71,6 @@ export const TicketCard: React.FC<TicketCardProps> = ({
     return 'No date provided';
   };
 
-  const canDelete = ticket.status === 'pending' || ticket.status === 'rejected';
-
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -92,7 +90,7 @@ export const TicketCard: React.FC<TicketCardProps> = ({
             <p className="text-[#7A7A7A]">{ticket.issueSubtype}</p>
           )}
         </div>
-        {onDelete && canDelete && (
+        {onDelete && (
           <motion.button
             onClick={() => onDelete(ticket.id)}
             whileHover={{ scale: 1.1 }}

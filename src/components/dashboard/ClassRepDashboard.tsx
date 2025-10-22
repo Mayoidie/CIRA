@@ -22,8 +22,8 @@ export const ClassRepDashboard: React.FC = () => {
   const [myTickets, setMyTickets] = useState<TicketType[]>([]);
   const [allTickets, setAllTickets] = useState<TicketType[]>([]);
   const [activeTab, setActiveTab] = useState<'my-tickets' | 'review' | 'report' | 'settings'>('my-tickets');
-  const [myTicketsFilter, setMyTicketsFilter] = useState<'all' | 'approved' | 'in-progress' | 'resolved' | 'rejected'>('all');
-  const [reviewFilter, setReviewFilter] = useState<'pending' | 'approved' | 'rejected'>('pending');
+  const [myTicketsFilter, setMyTicketsFilter] = useState<'all' | 'approved' | 'in-progress' | 'resolved'>('all');
+  const [reviewFilter, setReviewFilter] = useState<'pending' | 'approved' | 'in-progress' | 'resolved' | 'rejected'>('pending');
   const [searchQuery, setSearchQuery] = useState('');
   const [rejectionNote, setRejectionNote] = useState<{ [key: string]: string }>({});
   const { showToast } = useToast();
@@ -133,7 +133,6 @@ export const ClassRepDashboard: React.FC = () => {
   const approvedMyTickets = myTickets.filter(t => t.status === 'approved');
   const inProgressMyTickets = myTickets.filter(t => t.status === 'in-progress');
   const resolvedMyTickets = myTickets.filter(t => t.status === 'resolved');
-  const rejectedMyTickets = myTickets.filter(t => t.status === 'rejected');
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -237,16 +236,6 @@ export const ClassRepDashboard: React.FC = () => {
               >
                 Resolved ({resolvedMyTickets.length})
               </button>
-              <button
-                onClick={() => setMyTicketsFilter('rejected')}
-                className={`px-4 py-2 rounded-lg transition-all whitespace-nowrap ${
-                  myTicketsFilter === 'rejected'
-                    ? 'bg-[#FF4D4F] text-white'
-                    : 'bg-white text-[#7A7A7A] border border-gray-300 hover:bg-gray-50'
-                }`}
-              >
-                Rejected ({rejectedMyTickets.length})
-              </button>
             </div>
 
             {/* Search */}
@@ -295,36 +284,56 @@ export const ClassRepDashboard: React.FC = () => {
             exit={{ opacity: 0, y: -20 }}
           >
             {/* Filter Tabs */}
-            <div className="flex gap-2 mb-6">
+            <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
               <button
                 onClick={() => setReviewFilter('pending')}
-                className={`px-6 py-3 rounded-lg transition-all ${
+                className={`px-4 py-2 rounded-lg transition-all whitespace-nowrap ${
                   reviewFilter === 'pending'
                     ? 'bg-[#FFC107] text-[#1E1E1E]'
                     : 'bg-white text-[#7A7A7A] border border-gray-300 hover:bg-gray-50'
                 }`}
               >
-                Pending ({reviewTickets.filter(t => t.status === 'pending').length})
+                Pending ({pendingReviewTickets.length})
               </button>
               <button
                 onClick={() => setReviewFilter('approved')}
-                className={`px-6 py-3 rounded-lg transition-all ${
+                className={`px-4 py-2 rounded-lg transition-all whitespace-nowrap ${
                   reviewFilter === 'approved'
                     ? 'bg-[#1DB954] text-white'
                     : 'bg-white text-[#7A7A7A] border border-gray-300 hover:bg-gray-50'
                 }`}
               >
-                Approved ({reviewTickets.filter(t => t.status === 'approved').length})
+                Approved ({approvedReviewTickets.length})
+              </button>
+              <button
+                onClick={() => setReviewFilter('in-progress')}
+                className={`px-4 py-2 rounded-lg transition-all whitespace-nowrap ${
+                  reviewFilter === 'in-progress'
+                    ? 'bg-[#3942A7] text-white'
+                    : 'bg-white text-[#7A7A7A] border border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                In Progress ({inProgressReviewTickets.length})
+              </button>
+              <button
+                onClick={() => setReviewFilter('resolved')}
+                className={`px-4 py-2 rounded-lg transition-all whitespace-nowrap ${
+                  reviewFilter === 'resolved'
+                    ? 'bg-[#1DB954] text-white'
+                    : 'bg-white text-[#7A7A7A] border border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                Resolved ({resolvedReviewTickets.length})
               </button>
               <button
                 onClick={() => setReviewFilter('rejected')}
-                className={`px-6 py-3 rounded-lg transition-all ${
+                className={`px-4 py-2 rounded-lg transition-all whitespace-nowrap ${
                   reviewFilter === 'rejected'
                     ? 'bg-[#FF4D4F] text-white'
                     : 'bg-white text-[#7A7A7A] border border-gray-300 hover:bg-gray-50'
                 }`}
               >
-                Rejected ({reviewTickets.filter(t => t.status === 'rejected').length})
+                Rejected ({rejectedReviewTickets.length})
               </button>
             </div>
 

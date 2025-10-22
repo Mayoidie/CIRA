@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { CheckCircle, AlertCircle, FileText, Settings as SettingsIcon, Search, Users, Play, XCircle } from 'lucide-react';
+import { Ticket, Clock, CheckCircle, AlertCircle, FileText, Search, ClipboardList, UserPlus, Users, Trash2, XCircle } from 'lucide-react';
 import { db, auth } from '../../lib/firebase';
-import { collection, query, onSnapshot, doc, deleteDoc, updateDoc, where } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, deleteDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { TicketCard } from '../tickets/TicketCard';
-import { SettingsPage } from '../settings/SettingsPage';
+import { AddAdmin } from '../admin/AddAdmin';
+import { ManageUsers } from '../admin/ManageUsers';
 import { useToast } from '../ui/toast-container';
 
 interface TicketType {
@@ -13,52 +14,27 @@ interface TicketType {
   issueDescription: string;
   issueType: string;
   status: 'pending' | 'approved' | 'in-progress' | 'resolved' | 'rejected';
-  resolutionNote?: string;
-  // Add any other fields that a ticket might have
-}
-
-interface User {
-  id: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  studentId: string;
-  role: 'student' | 'class-representative' | 'admin';
-  requestedRole?: 'class-representative';
+  userId: string;
+  rejectionNote?: string;
 }
 
 export const AdminDashboard: React.FC = () => {
   const [tickets, setTickets] = useState<TicketType[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
-  const [activeTab, setActiveTab] = useState<'tickets' | 'users' | 'settings'>('tickets');
-  const [ticketFilter, setTicketFilter] = useState<'approved' | 'in-progress' | 'resolved' | 'rejected'>('approved');
+  const [activeTab, setActiveTab] = useState<'review' | 'add-admin' | 'manage-users'>('review');
+  const [reviewFilter, setReviewFilter] = useState<'pending' | 'approved' | 'in-progress' | 'resolved' | 'rejected'>('pending');
   const [searchQuery, setSearchQuery] = useState('');
-  const [resolutionNote, setResolutionNote] = useState<{ [key: string]: string }>({});
+  const [rejectionNote, setRejectionNote] = useState<{ [key: string]: string }>({});
   const { showToast } = useToast();
 
   useEffect(() => {
-    const currentUser = auth.currentUser;
-    if (!currentUser) return;
-
-    // Listen for tickets
-    const ticketsQuery = query(collection(db, 'tickets'));
-    const unsubscribeTickets = onSnapshot(ticketsQuery, (snapshot) => {
-      const ticketsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TicketType));
+    const q = query(collection(db, 'tickets'));
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const ticketsData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TicketType));
       setTickets(ticketsData);
     });
 
-    // Listen for users
-    const usersQuery = query(collection(db, 'users'));
-    const unsubscribeUsers = onSnapshot(usersQuery, (snapshot) => {
-      const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
-      setUsers(usersData);
-    });
-
-    return () => {
-      unsubscribeTickets();
-      unsubscribeUsers();
-    };
-  }, [auth.currentUser]);
+    return () => unsubscribe();
+  }, []);
 
   const handleDeleteTicket = async (ticketId: string) => {
     if (confirm('Are you sure you want to delete this ticket?')) {
@@ -71,76 +47,82 @@ export const AdminDashboard: React.FC = () => {
     }
   };
 
-  const handleStatusChange = async (ticketId: string, status: 'in-progress' | 'resolved') => {
-    try {
-      if (status === 'resolved') {
-        const note = resolutionNote[ticketId];
-        if (!note || note.trim() === '') {
-          showToast('Please add a resolution note before marking as resolved', 'warning');
-          return;
-        }
-        await updateDoc(doc(db, 'tickets', ticketId), { status, resolutionNote: note });
-        setResolutionNote(prev => {
-          const updated = { ...prev };
-          delete updated[ticketId];
-          return updated;
+  const handleDeleteAllTickets = async (status: 'approved' | 'in-progress' | 'resolved' | 'rejected') => {
+    const ticketsToDelete = tickets.filter(t => t.status === status);
+    if (ticketsToDelete.length === 0) {
+      showToast(`No ${status} tickets to delete.`, 'info');
+      return;
+    }
+
+    if (confirm(`Are you sure you want to delete all ${status} tickets?`)) {
+      try {
+        const batch = writeBatch(db);
+        ticketsToDelete.forEach(ticket => {
+          batch.delete(doc(db, 'tickets', ticket.id));
         });
-      } else {
-        await updateDoc(doc(db, 'tickets', ticketId), { status });
+        await batch.commit();
+        showToast(`All ${status} tickets deleted successfully`, 'success');
+      } catch (error) {
+        showToast(`Failed to delete all ${status} tickets`, 'error');
       }
-      showToast(`Ticket marked as ${status.replace('-', ' ')}`, 'success');
+    }
+  };
+
+  const handleApprove = async (ticketId: string) => {
+    try {
+      await updateDoc(doc(db, 'tickets', ticketId), { status: 'approved' });
+      showToast('Ticket approved successfully', 'success');
     } catch (error) {
-      showToast('Failed to update ticket status', 'error');
+      showToast('Failed to approve ticket', 'error');
     }
   };
 
-  const handleApproveClassRep = async (userId: string) => {
-    if (confirm('Approve this user as a Class Representative?')) {
-      try {
-        await updateDoc(doc(db, 'users', userId), { role: 'class-representative', requestedRole: '' });
-        showToast('User approved as Class Representative', 'success');
-      } catch (error) {
-        showToast('Failed to approve user', 'error');
-      }
+  const handleReject = async (ticketId: string) => {
+    const note = rejectionNote[ticketId];
+    if (!note || note.trim() === '') {
+      showToast('Please provide a reason for rejecting the ticket.', 'error');
+      return;
     }
-  };
 
-  const handleRejectClassRep = async (userId: string) => {
-    if (confirm('Reject this Class Representative request?')) {
-      try {
-        await updateDoc(doc(db, 'users', userId), { requestedRole: '' });
-        showToast('Class Representative request rejected', 'info');
-      } catch (error) {
-        showToast('Failed to reject request', 'error');
-      }
+    try {
+      await updateDoc(doc(db, 'tickets', ticketId), { status: 'rejected', rejectionNote: note });
+      showToast('Ticket rejected', 'info');
+      setRejectionNote(prev => {
+        const updated = { ...prev };
+        delete updated[ticketId];
+        return updated;
+      });
+    } catch (error) {
+      showToast('Failed to reject ticket', 'error');
     }
   };
 
   const filteredTickets = tickets
-    .filter(t => t.status === ticketFilter)
+    .filter(t => t.status === reviewFilter)
     .filter(ticket => 
       ticket.issueDescription.toLowerCase().includes(searchQuery.toLowerCase()) ||
       ticket.classroom.toLowerCase().includes(searchQuery.toLowerCase()) ||
       ticket.issueType.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
+  const pendingTickets = tickets.filter(t => t.status === 'pending');
   const approvedTickets = tickets.filter(t => t.status === 'approved');
   const inProgressTickets = tickets.filter(t => t.status === 'in-progress');
   const resolvedTickets = tickets.filter(t => t.status === 'resolved');
   const rejectedTickets = tickets.filter(t => t.status === 'rejected');
-  const pendingClassReps = users.filter(u => u.requestedRole === 'class-representative');
 
   const stats = [
+    { label: 'Pending', count: pendingTickets.length, icon: Clock, color: 'bg-[#FFC107]' },
     { label: 'Approved', count: approvedTickets.length, icon: CheckCircle, color: 'bg-[#1DB954]' },
-    { label: 'In Progress', count: inProgressTickets.length, icon: Play, color: 'bg-[#3942A7]' },
+    { label: 'In Progress', count: inProgressTickets.length, icon: AlertCircle, color: 'bg-[#3942A7]' },
     { label: 'Resolved', count: resolvedTickets.length, icon: CheckCircle, color: 'bg-[#1DB954]' },
     { label: 'Rejected', count: rejectedTickets.length, icon: XCircle, color: 'bg-[#FF4D4F]' },
   ];
 
   const tabs = [
-    { id: 'tickets', label: 'Tickets', icon: FileText },
-    { id: 'users', label: 'User Management', icon: Users },
-    { id: 'settings', label: 'Settings', icon: SettingsIcon },
+    { id: 'review', label: 'Review Tickets', icon: ClipboardList },
+    { id: 'add-admin', label: 'Add Admin', icon: UserPlus },
+    { id: 'manage-users', label: 'Manage Users', icon: Users },
   ];
 
   return (
@@ -152,11 +134,11 @@ export const AdminDashboard: React.FC = () => {
         className="mb-8"
       >
         <h1 className="text-[#1E1E1E] mb-2">Admin Dashboard</h1>
-        <p className="text-[#7A7A7A]">Manage all tickets and user permissions</p>
+        <p className="text-[#7A7A7A]">Manage tickets, users, and system settings</p>
       </motion.div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
         {stats.map((stat, index) => (
           <motion.div
             key={stat.label}
@@ -176,12 +158,12 @@ export const AdminDashboard: React.FC = () => {
 
       {/* Tabs */}
       <div className="bg-white rounded-xl shadow-md mb-6 overflow-hidden">
-        <div className="flex border-b border-gray-200">
+        <div className="flex border-b border-gray-200 overflow-x-auto">
           {tabs.map(tab => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`flex-1 flex items-center justify-center gap-2 px-6 py-4 transition-all ${
+              className={`flex-1 flex items-center justify-center gap-2 px-6 py-4 transition-all whitespace-nowrap ${
                 activeTab === tab.id
                   ? 'bg-[#3942A7] text-white'
                   : 'bg-white text-[#7A7A7A] hover:bg-gray-50'
@@ -196,55 +178,31 @@ export const AdminDashboard: React.FC = () => {
 
       {/* Content */}
       <AnimatePresence mode="wait">
-        {activeTab === 'tickets' && (
+        {activeTab === 'review' && (
           <motion.div
-            key="tickets"
+            key="review"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
           >
-            {/* Filter Tabs */}
-            <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
-               <button
-                onClick={() => setTicketFilter('approved')}
-                className={`px-4 py-2 rounded-lg transition-all whitespace-nowrap ${
-                  ticketFilter === 'approved'
-                    ? 'bg-[#1DB954] text-white'
-                    : 'bg-white text-[#7A7A7A] border border-gray-300 hover:bg-gray-50'
-                }`}
-              >
-                Approved ({approvedTickets.length})
-              </button>
-              <button
-                onClick={() => setTicketFilter('in-progress')}
-                className={`px-4 py-2 rounded-lg transition-all whitespace-nowrap ${
-                  ticketFilter === 'in-progress'
-                    ? 'bg-[#3942A7] text-white'
-                    : 'bg-white text-[#7A7A7A] border border-gray-300 hover:bg-gray-50'
-                }`}
-              >
-                In Progress ({inProgressTickets.length})
-              </button>
-              <button
-                onClick={() => setTicketFilter('resolved')}
-                className={`px-4 py-2 rounded-lg transition-all whitespace-nowrap ${
-                  ticketFilter === 'resolved'
-                    ? 'bg-[#1DB954] text-white'
-                    : 'bg-white text-[#7A7A7A] border border-gray-300 hover:bg-gray-50'
-                }`}
-              >
-                Resolved ({resolvedTickets.length})
-              </button>
-              <button
-                onClick={() => setTicketFilter('rejected')}
-                className={`px-4 py-2 rounded-lg transition-all whitespace-nowrap ${
-                  ticketFilter === 'rejected'
-                    ? 'bg-[#FF4D4F] text-white'
-                    : 'bg-white text-[#7A7A7A] border border-gray-300 hover:bg-gray-50'
-                }`}
-              >
-                Rejected ({rejectedTickets.length})
-              </button>
+            {/* Filter Tabs & Delete All */}
+            <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+              <div className="flex gap-2 overflow-x-auto pb-2">
+                <button onClick={() => setReviewFilter('pending')} className={`px-4 py-2 rounded-lg transition-all whitespace-nowrap ${reviewFilter === 'pending' ? 'bg-[#FFC107] text-[#1E1E1E]' : 'bg-white text-[#7A7A7A] border border-gray-300 hover:bg-gray-50'}`}>Pending ({pendingTickets.length})</button>
+                <button onClick={() => setReviewFilter('approved')} className={`px-4 py-2 rounded-lg transition-all whitespace-nowrap ${reviewFilter === 'approved' ? 'bg-[#1DB954] text-white' : 'bg-white text-[#7A7A7A] border border-gray-300 hover:bg-gray-50'}`}>Approved ({approvedTickets.length})</button>
+                <button onClick={() => setReviewFilter('in-progress')} className={`px-4 py-2 rounded-lg transition-all whitespace-nowrap ${reviewFilter === 'in-progress' ? 'bg-[#3942A7] text-white' : 'bg-white text-[#7A7A7A] border border-gray-300 hover:bg-gray-50'}`}>In Progress ({inProgressTickets.length})</button>
+                <button onClick={() => setReviewFilter('resolved')} className={`px-4 py-2 rounded-lg transition-all whitespace-nowrap ${reviewFilter === 'resolved' ? 'bg-[#1DB954] text-white' : 'bg-white text-[#7A7A7A] border border-gray-300 hover:bg-gray-50'}`}>Resolved ({resolvedTickets.length})</button>
+                <button onClick={() => setReviewFilter('rejected')} className={`px-4 py-2 rounded-lg transition-all whitespace-nowrap ${reviewFilter === 'rejected' ? 'bg-[#FF4D4F] text-white' : 'bg-white text-[#7A7A7A] border border-gray-300 hover:bg-gray-50'}`}>Rejected ({rejectedTickets.length})</button>
+              </div>
+              {['approved', 'in-progress', 'resolved', 'rejected'].includes(reviewFilter) && (
+                <button 
+                  onClick={() => handleDeleteAllTickets(reviewFilter as any)}
+                  className="bg-red-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-red-600 transition-colors"
+                >
+                  <Trash2 className="w-5 h-5" />
+                  Delete All {reviewFilter.charAt(0).toUpperCase() + reviewFilter.slice(1)}
+                </button>
+              )}
             </div>
 
             {/* Search */}
@@ -268,53 +226,29 @@ export const AdminDashboard: React.FC = () => {
                 <p className="text-[#7A7A7A]">
                   {searchQuery 
                     ? 'Try adjusting your search query' 
-                    : `There are no ${ticketFilter.replace('-', ' ')} tickets`}
+                    : `There are no ${reviewFilter} tickets`}
                 </p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filteredTickets.map(ticket => (
-                  <div key={ticket.id} className="space-y-4">
+                   <div key={ticket.id} className="space-y-4">
                     <TicketCard
                       ticket={ticket}
-                      onDelete={handleDeleteTicket}
+                      onApprove={reviewFilter === 'pending' ? handleApprove : undefined}
+                      onReject={reviewFilter === 'pending' ? () => handleReject(ticket.id) : undefined}
+                      onDelete={['approved', 'in-progress', 'resolved', 'rejected'].includes(reviewFilter) ? handleDeleteTicket : undefined}
+                      showActions={reviewFilter === 'pending'}
                     />
-                    
-                    {/* Admin Actions - Only show for approved and in-progress tickets */}
-                    {ticketFilter !== 'resolved' && ticketFilter !== 'rejected' && (
+                    {reviewFilter === 'pending' && (
                       <div className="bg-white rounded-xl shadow-md p-4 border border-gray-200">
-                        {ticketFilter === 'approved' && (
-                          <motion.button
-                            onClick={() => handleStatusChange(ticket.id, 'in-progress')}
-                            whileHover={{ scale: 1.02 }}
-                            whileTap={{ scale: 0.98 }}
-                            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-[#3942A7] text-white rounded-lg hover:bg-[#3942A7]/90 transition-all"
-                          >
-                            <Play className="w-4 h-4" />
-                            <span>Start Working</span>
-                          </motion.button>
-                        )}
-                        
-                        {ticketFilter === 'in-progress' && (
-                          <div className="space-y-3">
-                            <textarea
-                              value={resolutionNote[ticket.id] || ''}
-                              onChange={(e) => setResolutionNote(prev => ({ ...prev, [ticket.id]: e.target.value }))}
-                              placeholder="Add resolution note..."
-                              rows={3}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3942A7] transition-all"
-                            />
-                            <motion.button
-                              onClick={() => handleStatusChange(ticket.id, 'resolved')}
-                              whileHover={{ scale: 1.02 }}
-                              whileTap={{ scale: 0.98 }}
-                              className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-[#1DB954] text-white rounded-lg hover:bg-[#1DB954]/90 transition-all"
-                            >
-                              <CheckCircle className="w-4 h-4" />
-                              <span>Mark as Resolved</span>
-                            </motion.button>
-                          </div>
-                        )}
+                        <textarea
+                          value={rejectionNote[ticket.id] || ''}
+                          onChange={(e) => setRejectionNote(prev => ({ ...prev, [ticket.id]: e.target.value }))}
+                          placeholder="Add rejection note..."
+                          rows={3}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3942A7] transition-all"
+                        />
                       </div>
                     )}
                   </div>
@@ -324,68 +258,25 @@ export const AdminDashboard: React.FC = () => {
           </motion.div>
         )}
 
-        {activeTab === 'users' && (
+        {activeTab === 'add-admin' && (
           <motion.div
-            key="users"
+            key="add-admin"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
           >
-            <h3 className="text-[#1E1E1E] mb-6">Pending Class Representative Requests</h3>
-            
-            {pendingClassReps.length === 0 ? (
-              <div className="bg-white rounded-xl shadow-md p-12 text-center">
-                <Users className="w-16 h-16 mx-auto text-[#7A7A7A] mb-4" />
-                <h3 className="text-[#1E1E1E] mb-2">No pending requests</h3>
-                <p className="text-[#7A7A7A]">There are no Class Representative requests to review</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {pendingClassReps.map(user => (
-                  <div key={user.id} className="bg-white rounded-xl shadow-md p-6 border border-gray-200">
-                    <div className="mb-4">
-                      <h4 className="text-[#1E1E1E] mb-2">{user.firstName} {user.lastName}</h4>
-                      <p className="text-[#7A7A7A]">{user.email}</p>
-                      <p className="text-[#7A7A7A]">Student ID: {user.studentId}</p>
-                      <span className="inline-block mt-2 px-3 py-1 bg-[#FFC107] text-[#1E1E1E] rounded-full">
-                        Requested: Class Representative
-                      </span>
-                    </div>
-                    <div className="flex gap-2">
-                      <motion.button
-                        onClick={() => handleApproveClassRep(user.id)}
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-[#1DB954] text-white rounded-lg hover:bg-[#1DB954]/90 transition-all"
-                      >
-                        <CheckCircle className="w-4 h-4" />
-                        <span>Approve</span>
-                      </motion.button>
-                      <motion.button
-                        onClick={() => handleRejectClassRep(user.id)}
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-[#FF4D4F] text-white rounded-lg hover:bg-[#FF4D4F]/90 transition-all"
-                      >
-                        <AlertCircle className="w-4 h-4" />
-                        <span>Reject</span>
-                      </motion.button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+            <AddAdmin />
           </motion.div>
         )}
 
-        {activeTab === 'settings' && (
+        {activeTab === 'manage-users' && (
           <motion.div
-            key="settings"
+            key="manage-users"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
           >
-            <SettingsPage />
+            <ManageUsers />
           </motion.div>
         )}
       </AnimatePresence>

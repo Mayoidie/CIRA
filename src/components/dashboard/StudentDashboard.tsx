@@ -2,11 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Ticket, Clock, CheckCircle, AlertCircle, FileText, Settings as SettingsIcon, Search, XCircle } from 'lucide-react';
 import { db, auth } from '../../lib/firebase';
-import { collection, query, where, onSnapshot, doc, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { TicketCard } from '../tickets/TicketCard';
 import { TicketForm } from '../tickets/TicketForm';
 import { SettingsPage } from '../settings/SettingsPage';
-import { useToast } from '../ui/toast-container';
 
 interface TicketType {
   id: string;
@@ -22,7 +21,6 @@ export const StudentDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'my-tickets' | 'report' | 'settings'>('my-tickets');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'in-progress' | 'resolved' | 'rejected'>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const { showToast } = useToast();
 
   useEffect(() => {
     if (auth.currentUser) {
@@ -35,17 +33,6 @@ export const StudentDashboard: React.FC = () => {
       return () => unsubscribe();
     }
   }, [auth.currentUser]);
-
-  const handleDeleteTicket = async (ticketId: string) => {
-    if (confirm('Are you sure you want to delete this ticket?')) {
-      try {
-        await deleteDoc(doc(db, 'tickets', ticketId));
-        showToast('Ticket deleted successfully', 'success');
-      } catch (error) {
-        showToast('Failed to delete ticket', 'error');
-      }
-    }
-  };
 
   const pendingTickets = tickets.filter(t => t.status === 'pending');
   const approvedTickets = tickets.filter(t => t.status === 'approved');
@@ -229,7 +216,6 @@ export const StudentDashboard: React.FC = () => {
                   <TicketCard
                     key={ticket.id}
                     ticket={ticket}
-                    onDelete={handleDeleteTicket}
                   />
                 ))}
               </div>
