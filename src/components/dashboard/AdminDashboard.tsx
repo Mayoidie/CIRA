@@ -1,71 +1,118 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { CheckCircle, AlertCircle, FileText, Settings as SettingsIcon, Search, Users, Play } from 'lucide-react';
-import { getTickets, getUsers, deleteTicket as deleteTicketFn, updateTicket, updateUser, saveUsers } from '../../lib/mockData';
-import { Ticket as TicketType, User } from '../../lib/mockData';
+import { CheckCircle, AlertCircle, FileText, Settings as SettingsIcon, Search, Users, Play, XCircle } from 'lucide-react';
+import { db, auth } from '../../lib/firebase';
+import { collection, query, onSnapshot, doc, deleteDoc, updateDoc, where } from 'firebase/firestore';
 import { TicketCard } from '../tickets/TicketCard';
 import { SettingsPage } from '../settings/SettingsPage';
 import { useToast } from '../ui/toast-container';
+
+interface TicketType {
+  id: string;
+  classroom: string;
+  issueDescription: string;
+  issueType: string;
+  status: 'pending' | 'approved' | 'in-progress' | 'resolved' | 'rejected';
+  resolutionNote?: string;
+  // Add any other fields that a ticket might have
+}
+
+interface User {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  studentId: string;
+  role: 'student' | 'class-representative' | 'admin';
+  requestedRole?: 'class-representative';
+}
 
 export const AdminDashboard: React.FC = () => {
   const [tickets, setTickets] = useState<TicketType[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [activeTab, setActiveTab] = useState<'tickets' | 'users' | 'settings'>('tickets');
-  const [ticketFilter, setTicketFilter] = useState<'approved' | 'in-progress' | 'resolved'>('approved');
+  const [ticketFilter, setTicketFilter] = useState<'approved' | 'in-progress' | 'resolved' | 'rejected'>('approved');
   const [searchQuery, setSearchQuery] = useState('');
   const [resolutionNote, setResolutionNote] = useState<{ [key: string]: string }>({});
   const { showToast } = useToast();
 
-  const loadData = () => {
-    setTickets(getTickets());
-    setUsers(getUsers());
-  };
-
   useEffect(() => {
-    loadData();
-  }, []);
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
 
-  const handleDeleteTicket = (ticketId: string) => {
+    // Listen for tickets
+    const ticketsQuery = query(collection(db, 'tickets'));
+    const unsubscribeTickets = onSnapshot(ticketsQuery, (snapshot) => {
+      const ticketsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TicketType));
+      setTickets(ticketsData);
+    });
+
+    // Listen for users
+    const usersQuery = query(collection(db, 'users'));
+    const unsubscribeUsers = onSnapshot(usersQuery, (snapshot) => {
+      const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
+      setUsers(usersData);
+    });
+
+    return () => {
+      unsubscribeTickets();
+      unsubscribeUsers();
+    };
+  }, [auth.currentUser]);
+
+  const handleDeleteTicket = async (ticketId: string) => {
     if (confirm('Are you sure you want to delete this ticket?')) {
-      deleteTicketFn(ticketId);
-      loadData();
-      showToast('Ticket deleted successfully', 'success');
-    }
-  };
-
-  const handleStatusChange = (ticketId: string, status: 'in-progress' | 'resolved') => {
-    if (status === 'resolved') {
-      const note = resolutionNote[ticketId];
-      if (!note || note.trim() === '') {
-        showToast('Please add a resolution note before marking as resolved', 'warning');
-        return;
+      try {
+        await deleteDoc(doc(db, 'tickets', ticketId));
+        showToast('Ticket deleted successfully', 'success');
+      } catch (error) {
+        showToast('Failed to delete ticket', 'error');
       }
-      updateTicket(ticketId, { status, resolutionNote: note });
-      setResolutionNote(prev => {
-        const updated = { ...prev };
-        delete updated[ticketId];
-        return updated;
-      });
-    } else {
-      updateTicket(ticketId, { status });
     }
-    loadData();
-    showToast(`Ticket marked as ${status.replace('-', ' ')}`, 'success');
   };
 
-  const handleApproveClassRep = (userId: string) => {
+  const handleStatusChange = async (ticketId: string, status: 'in-progress' | 'resolved') => {
+    try {
+      if (status === 'resolved') {
+        const note = resolutionNote[ticketId];
+        if (!note || note.trim() === '') {
+          showToast('Please add a resolution note before marking as resolved', 'warning');
+          return;
+        }
+        await updateDoc(doc(db, 'tickets', ticketId), { status, resolutionNote: note });
+        setResolutionNote(prev => {
+          const updated = { ...prev };
+          delete updated[ticketId];
+          return updated;
+        });
+      } else {
+        await updateDoc(doc(db, 'tickets', ticketId), { status });
+      }
+      showToast(`Ticket marked as ${status.replace('-', ' ')}`, 'success');
+    } catch (error) {
+      showToast('Failed to update ticket status', 'error');
+    }
+  };
+
+  const handleApproveClassRep = async (userId: string) => {
     if (confirm('Approve this user as a Class Representative?')) {
-      updateUser(userId, { role: 'class-representative', requestedRole: undefined });
-      loadData();
-      showToast('User approved as Class Representative', 'success');
+      try {
+        await updateDoc(doc(db, 'users', userId), { role: 'class-representative', requestedRole: '' });
+        showToast('User approved as Class Representative', 'success');
+      } catch (error) {
+        showToast('Failed to approve user', 'error');
+      }
     }
   };
 
-  const handleRejectClassRep = (userId: string) => {
+  const handleRejectClassRep = async (userId: string) => {
     if (confirm('Reject this Class Representative request?')) {
-      updateUser(userId, { requestedRole: undefined });
-      loadData();
-      showToast('Class Representative request rejected', 'info');
+      try {
+        await updateDoc(doc(db, 'users', userId), { requestedRole: '' });
+        showToast('Class Representative request rejected', 'info');
+      } catch (error) {
+        showToast('Failed to reject request', 'error');
+      }
     }
   };
 
@@ -80,13 +127,14 @@ export const AdminDashboard: React.FC = () => {
   const approvedTickets = tickets.filter(t => t.status === 'approved');
   const inProgressTickets = tickets.filter(t => t.status === 'in-progress');
   const resolvedTickets = tickets.filter(t => t.status === 'resolved');
+  const rejectedTickets = tickets.filter(t => t.status === 'rejected');
   const pendingClassReps = users.filter(u => u.requestedRole === 'class-representative');
 
   const stats = [
     { label: 'Approved', count: approvedTickets.length, icon: CheckCircle, color: 'bg-[#1DB954]' },
     { label: 'In Progress', count: inProgressTickets.length, icon: Play, color: 'bg-[#3942A7]' },
     { label: 'Resolved', count: resolvedTickets.length, icon: CheckCircle, color: 'bg-[#1DB954]' },
-    { label: 'Total Tickets', count: tickets.length, icon: FileText, color: 'bg-[#1B1F50]' },
+    { label: 'Rejected', count: rejectedTickets.length, icon: XCircle, color: 'bg-[#FF4D4F]' },
   ];
 
   const tabs = [
@@ -157,7 +205,7 @@ export const AdminDashboard: React.FC = () => {
           >
             {/* Filter Tabs */}
             <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
-              <button
+               <button
                 onClick={() => setTicketFilter('approved')}
                 className={`px-4 py-2 rounded-lg transition-all whitespace-nowrap ${
                   ticketFilter === 'approved'
@@ -186,6 +234,16 @@ export const AdminDashboard: React.FC = () => {
                 }`}
               >
                 Resolved ({resolvedTickets.length})
+              </button>
+              <button
+                onClick={() => setTicketFilter('rejected')}
+                className={`px-4 py-2 rounded-lg transition-all whitespace-nowrap ${
+                  ticketFilter === 'rejected'
+                    ? 'bg-[#FF4D4F] text-white'
+                    : 'bg-white text-[#7A7A7A] border border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                Rejected ({rejectedTickets.length})
               </button>
             </div>
 
@@ -223,7 +281,7 @@ export const AdminDashboard: React.FC = () => {
                     />
                     
                     {/* Admin Actions - Only show for approved and in-progress tickets */}
-                    {ticketFilter !== 'resolved' && (
+                    {ticketFilter !== 'resolved' && ticketFilter !== 'rejected' && (
                       <div className="bg-white rounded-xl shadow-md p-4 border border-gray-200">
                         {ticketFilter === 'approved' && (
                           <motion.button

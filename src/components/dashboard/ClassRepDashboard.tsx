@@ -1,57 +1,88 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Ticket, Clock, CheckCircle, AlertCircle, FileText, Settings as SettingsIcon, Search, ClipboardList } from 'lucide-react';
-import { getUserTickets, getTickets, deleteTicket as deleteTicketFn, updateTicket, getCurrentUser } from '../../lib/mockData';
-import { Ticket as TicketType } from '../../lib/mockData';
+import { Ticket, Clock, CheckCircle, AlertCircle, FileText, Settings as SettingsIcon, Search, ClipboardList, XCircle } from 'lucide-react';
+import { db, auth } from '../../lib/firebase';
+import { collection, query, where, onSnapshot, doc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { TicketCard } from '../tickets/TicketCard';
 import { TicketForm } from '../tickets/TicketForm';
 import { SettingsPage } from '../settings/SettingsPage';
 import { useToast } from '../ui/toast-container';
 
+interface TicketType {
+  id: string;
+  classroom: string;
+  issueDescription: string;
+  issueType: string;
+  status: 'pending' | 'approved' | 'in-progress' | 'resolved' | 'rejected';
+  userId: string;
+  // Add any other fields that a ticket might have
+}
+
 export const ClassRepDashboard: React.FC = () => {
   const [myTickets, setMyTickets] = useState<TicketType[]>([]);
   const [allTickets, setAllTickets] = useState<TicketType[]>([]);
   const [activeTab, setActiveTab] = useState<'my-tickets' | 'review' | 'report' | 'settings'>('my-tickets');
-  const [myTicketsFilter, setMyTicketsFilter] = useState<'all' | 'pending' | 'approved' | 'in-progress' | 'resolved'>('all');
-  const [reviewFilter, setReviewFilter] = useState<'pending' | 'approved'>('pending');
+  const [myTicketsFilter, setMyTicketsFilter] = useState<'all' | 'pending' | 'approved' | 'in-progress' | 'resolved' | 'rejected'>('all');
+  const [reviewFilter, setReviewFilter] = useState<'pending' | 'approved' | 'rejected'>('pending');
   const [searchQuery, setSearchQuery] = useState('');
   const { showToast } = useToast();
 
-  const loadTickets = () => {
-    const user = getCurrentUser();
-    if (user) {
-      setMyTickets(getUserTickets(user.id));
-      setAllTickets(getTickets());
-    }
-  };
-
   useEffect(() => {
-    loadTickets();
-  }, []);
+    const currentUser = auth.currentUser;
+    if (currentUser) {
+      // Listen for my tickets
+      const myTicketsQuery = query(collection(db, 'tickets'), where('userId', '==', currentUser.uid));
+      const unsubscribeMyTickets = onSnapshot(myTicketsQuery, (snapshot) => {
+        const userTickets = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TicketType));
+        setMyTickets(userTickets);
+      });
 
-  const handleDeleteTicket = (ticketId: string) => {
+      // Listen for all tickets for review
+      const allTicketsQuery = query(collection(db, 'tickets'));
+      const unsubscribeAllTickets = onSnapshot(allTicketsQuery, (snapshot) => {
+        const allTicketsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TicketType));
+        setAllTickets(allTicketsData);
+      });
+
+      return () => {
+        unsubscribeMyTickets();
+        unsubscribeAllTickets();
+      };
+    }
+  }, [auth.currentUser]);
+
+  const handleDeleteTicket = async (ticketId: string) => {
     if (confirm('Are you sure you want to delete this ticket?')) {
-      deleteTicketFn(ticketId);
-      loadTickets();
-      showToast('Ticket deleted successfully', 'success');
+      try {
+        await deleteDoc(doc(db, 'tickets', ticketId));
+        showToast('Ticket deleted successfully', 'success');
+      } catch (error) {
+        showToast('Failed to delete ticket', 'error');
+      }
     }
   };
 
-  const handleApprove = (ticketId: string) => {
-    updateTicket(ticketId, { status: 'approved' });
-    loadTickets();
-    showToast('Ticket approved successfully', 'success');
+  const handleApprove = async (ticketId: string) => {
+    try {
+      await updateDoc(doc(db, 'tickets', ticketId), { status: 'approved' });
+      showToast('Ticket approved successfully', 'success');
+    } catch (error) {
+      showToast('Failed to approve ticket', 'error');
+    }
   };
 
-  const handleReject = (ticketId: string) => {
-    updateTicket(ticketId, { status: 'rejected' });
-    loadTickets();
-    showToast('Ticket rejected', 'info');
+  const handleReject = async (ticketId: string) => {
+    try {
+      await updateDoc(doc(db, 'tickets', ticketId), { status: 'rejected' });
+      showToast('Ticket rejected', 'info');
+    } catch (error) {
+      showToast('Failed to reject ticket', 'error');
+    }
   };
-
-  const user = getCurrentUser();
-  const reviewTickets = allTickets.filter(t => t.userId !== user?.id);
   
+  const currentUser = auth.currentUser;
+  const reviewTickets = allTickets.filter(t => t.userId !== currentUser?.uid);
+
   const filteredMyTickets = myTickets
     .filter(ticket => myTicketsFilter === 'all' || ticket.status === myTicketsFilter)
     .filter(ticket => 
@@ -72,13 +103,14 @@ export const ClassRepDashboard: React.FC = () => {
   const approvedMyTickets = myTickets.filter(t => t.status === 'approved');
   const inProgressMyTickets = myTickets.filter(t => t.status === 'in-progress');
   const resolvedMyTickets = myTickets.filter(t => t.status === 'resolved');
+  const rejectedMyTickets = myTickets.filter(t => t.status === 'rejected');
 
   const stats = [
     { label: 'Pending', count: pendingMyTickets.length, icon: Clock, color: 'bg-[#FFC107]' },
     { label: 'Approved', count: approvedMyTickets.length, icon: CheckCircle, color: 'bg-[#1DB954]' },
     { label: 'In Progress', count: inProgressMyTickets.length, icon: AlertCircle, color: 'bg-[#3942A7]' },
     { label: 'Resolved', count: resolvedMyTickets.length, icon: CheckCircle, color: 'bg-[#1DB954]' },
-    { label: 'Total', count: myTickets.length, icon: FileText, color: 'bg-[#1B1F50]' },
+    { label: 'Rejected', count: rejectedMyTickets.length, icon: XCircle, color: 'bg-[#FF4D4F]' },
   ];
 
   const tabs = [
@@ -150,7 +182,7 @@ export const ClassRepDashboard: React.FC = () => {
           >
             {/* Filter Tabs */}
             <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
-              <button
+               <button
                 onClick={() => setMyTicketsFilter('all')}
                 className={`px-4 py-2 rounded-lg transition-all whitespace-nowrap ${
                   myTicketsFilter === 'all'
@@ -199,6 +231,16 @@ export const ClassRepDashboard: React.FC = () => {
                 }`}
               >
                 Resolved ({resolvedMyTickets.length})
+              </button>
+              <button
+                onClick={() => setMyTicketsFilter('rejected')}
+                className={`px-4 py-2 rounded-lg transition-all whitespace-nowrap ${
+                  myTicketsFilter === 'rejected'
+                    ? 'bg-[#FF4D4F] text-white'
+                    : 'bg-white text-[#7A7A7A] border border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                Rejected ({rejectedMyTickets.length})
               </button>
             </div>
 
@@ -269,6 +311,16 @@ export const ClassRepDashboard: React.FC = () => {
               >
                 Approved ({reviewTickets.filter(t => t.status === 'approved').length})
               </button>
+              <button
+                onClick={() => setReviewFilter('rejected')}
+                className={`px-6 py-3 rounded-lg transition-all ${
+                  reviewFilter === 'rejected'
+                    ? 'bg-[#FF4D4F] text-white'
+                    : 'bg-white text-[#7A7A7A] border border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                Rejected ({reviewTickets.filter(t => t.status === 'rejected').length})
+              </button>
             </div>
 
             {/* Search */}
@@ -318,7 +370,7 @@ export const ClassRepDashboard: React.FC = () => {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
           >
-            <TicketForm onSuccess={loadTickets} />
+            <TicketForm onSuccess={() => setActiveTab('my-tickets')} />
           </motion.div>
         )}
 

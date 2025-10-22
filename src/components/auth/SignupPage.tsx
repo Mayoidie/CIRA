@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { User, Mail, Lock, IdCard, UserPlus, CheckCircle, LogIn, Send } from 'lucide-react';
-import { createUser } from '../../lib/mockData';
 import { useToast } from '../ui/toast-container';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
+import { auth, db } from '../../lib/firebase';
+import { createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
+import { doc, setDoc } from 'firebase/firestore';
 
 interface SignupPageProps {
   onNavigateToLogin: () => void;
@@ -74,43 +76,51 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onNavigateToLogin }) => 
 
     setIsLoading(true);
 
-    // Simulate API call
-    setTimeout(() => {
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
+      const user = userCredential.user;
+
+      // This is the corrected data object.
+      // The `requestedRole` field is only added if the role is 'class-representative'.
+      await setDoc(doc(db, "users", user.uid), {
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        email: formData.email,
+        studentId: formData.studentId,
+        role: 'student',
+        ...(formData.role === 'class-representative' && { requestedRole: 'class-representative' }),
+      });
+
       try {
-        createUser({
-          email: formData.email,
-          firstName: formData.firstName,
-          lastName: formData.lastName,
-          studentId: formData.studentId,
-          role: 'student',
-          requestedRole: formData.role === 'class-representative' ? 'class-representative' : undefined,
-          password: formData.password,
-        });
-
-        // In production, this would send a verification email via backend
-        console.log('=== VERIFICATION EMAIL SENT ===');
-        console.log(`To: ${formData.email}`);
-        console.log(`Verification link: [Demo - Email would contain verification link]`);
-        console.log('================================');
-
-        setShowVerificationMessage(true);
-        setIsLoading(false);
+        await sendEmailVerification(user);
       } catch (error) {
-        showToast('Failed to create account. Please try again.', 'error');
-        setIsLoading(false);
+        showToast('Failed to send verification email. You can try resending it from the login page.', 'error');
       }
-    }, 1500);
+
+      setShowVerificationMessage(true);
+    } catch (error: any) {
+      if (error.code === 'auth/email-already-in-use') {
+        showToast('This email is already in use.', 'error');
+      } else {
+        // Log the detailed error to the console
+        console.error("Detailed Signup Error:", error);
+        showToast('Failed to create account. Please try again.', 'error');
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleResendVerification = () => {
-    // In production, this would trigger a new verification email
-    console.log('=== RESENDING VERIFICATION EMAIL ===');
-    console.log(`To: ${formData.email}`);
-    console.log(`Verification link: [Demo - Email would contain verification link]`);
-    console.log('====================================');
-    
-    showToast('Verification link resent successfully!', 'success');
-    showToast('[Demo Mode] Check console for verification link', 'info');
+  const handleResendVerification = async () => {
+    if (auth.currentUser) {
+      try {
+        await sendEmailVerification(auth.currentUser);
+        showToast('Verification link resent successfully!', 'success');
+      } catch (error) {
+        console.error("Resend Verification Error:", error);
+        showToast('Failed to resend verification email.', 'error');
+      }
+    }
   };
 
   return (

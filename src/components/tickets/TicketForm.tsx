@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { Upload, Send } from 'lucide-react';
-import { createTicket, getCurrentUser } from '../../lib/mockData';
 import { useToast } from '../ui/toast-container';
 import { CLASSROOMS, ISSUE_TYPES } from '../../lib/issueTypes';
+import { db, auth } from '../../lib/firebase';
+import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 interface TicketFormProps {
   onSuccess: () => void;
@@ -59,53 +61,59 @@ export const TicketForm: React.FC<TicketFormProps> = ({ onSuccess }) => {
 
     setIsLoading(true);
 
-    const user = getCurrentUser();
+    const user = auth.currentUser;
     if (!user) {
-      showToast('User not found', 'error');
+      showToast('You must be logged in to submit a ticket', 'error');
       setIsLoading(false);
       return;
     }
 
-    setTimeout(() => {
-      try {
-        // For class representatives, auto-approve their tickets
-        const status = user.role === 'class-representative' ? 'approved' : 'pending';
-
-        createTicket({
-          userId: user.id,
-          classroom: formData.classroom,
-          unitId: formData.unitId,
-          issueType: formData.issueType,
-          issueSubtype: formData.issueSubtype,
-          issueDescription: formData.issueDescription,
-          imageUrl: imagePreview || undefined,
-          status,
-        });
-
-        showToast(
-          user.role === 'class-representative' 
-            ? 'Ticket created and automatically approved!' 
-            : 'Ticket submitted successfully! Sent to Class Representative for approval.',
-          'success'
-        );
-
-        // Reset form
-        setFormData({
-          classroom: '',
-          unitId: '',
-          issueType: '',
-          issueSubtype: '',
-          issueDescription: '',
-        });
-        setImageFile(null);
-        setImagePreview('');
-        onSuccess();
-      } catch (error) {
-        showToast('Failed to submit ticket', 'error');
-      } finally {
-        setIsLoading(false);
+    try {
+      let imageUrl = '';
+      if (imageFile) {
+        const storage = getStorage();
+        const storageRef = ref(storage, `tickets/${user.uid}/${Date.now()}_${imageFile.name}`);
+        const snapshot = await uploadBytes(storageRef, imageFile);
+        imageUrl = await getDownloadURL(snapshot.ref);
       }
-    }, 1000);
+
+      const currentUserData = JSON.parse(localStorage.getItem('currentUser') || '{}');
+      const status = currentUserData.role === 'class-representative' ? 'approved' : 'pending';
+
+      await addDoc(collection(db, 'tickets'), {
+        userId: user.uid,
+        classroom: formData.classroom,
+        unitId: formData.unitId,
+        issueType: formData.issueType,
+        issueSubtype: formData.issueSubtype,
+        issueDescription: formData.issueDescription,
+        imageUrl,
+        status,
+        createdAt: serverTimestamp(),
+      });
+
+      showToast(
+        status === 'approved'
+          ? 'Ticket created and automatically approved!'
+          : 'Ticket submitted successfully! Sent to Class Representative for approval.',
+        'success'
+      );
+
+      setFormData({
+        classroom: '',
+        unitId: '',
+        issueType: '',
+        issueSubtype: '',
+        issueDescription: '',
+      });
+      setImageFile(null);
+      setImagePreview('');
+      onSuccess();
+    } catch (error) {
+      showToast('Failed to submit ticket', 'error');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const selectedIssueType = formData.issueType ? ISSUE_TYPES[formData.issueType as keyof typeof ISSUE_TYPES] : null;

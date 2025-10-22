@@ -1,7 +1,21 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { Calendar, MapPin, AlertCircle, Trash2, CheckCircle, XCircle } from 'lucide-react';
-import { Ticket } from '../../lib/mockData';
+
+interface Ticket {
+  id: string;
+  classroom: string;
+  issueDescription: string;
+  issueType: string;
+  issueSubtype?: string;
+  status: 'pending' | 'approved' | 'in-progress' | 'resolved' | 'rejected';
+  createdAt: any; // Can be string or Firestore Timestamp
+  updatedAt?: any;
+  userId?: string;
+  unitId?: string;
+  imageUrl?: string;
+  resolutionNote?: string;
+}
 
 interface TicketCardProps {
   ticket: Ticket;
@@ -35,14 +49,25 @@ export const TicketCard: React.FC<TicketCardProps> = ({
     }
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+  const formatDate = (date: any) => {
+    if (date && typeof date.toDate === 'function') {
+      return date.toDate().toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    } else if (typeof date === 'string') {
+      return new Date(date).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    }
+    return 'No date provided';
   };
 
   return (
@@ -57,7 +82,7 @@ export const TicketCard: React.FC<TicketCardProps> = ({
             <span className={`px-3 py-1 rounded-full ${getStatusColor(ticket.status)}`}>
               {ticket.status.replace('-', ' ').toUpperCase()}
             </span>
-            <span className="text-[#7A7A7A]">#{ticket.id.split('-')[1]}</span>
+            <span className="text-[#7A7A7A]">#{ticket.id.substring(0, 5)}...</span>
           </div>
           <h3 className="text-[#1E1E1E] mb-1">{ticket.issueType}</h3>
           {ticket.issueSubtype && (

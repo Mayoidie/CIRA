@@ -1,36 +1,49 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Ticket, Clock, CheckCircle, AlertCircle, FileText, Settings as SettingsIcon, Search } from 'lucide-react';
-import { getUserTickets, deleteTicket as deleteTicketFn, getCurrentUser } from '../../lib/mockData';
-import { Ticket as TicketType } from '../../lib/mockData';
+import { Ticket, Clock, CheckCircle, AlertCircle, FileText, Settings as SettingsIcon, Search, XCircle } from 'lucide-react';
+import { db, auth } from '../../lib/firebase';
+import { collection, query, where, onSnapshot, doc, deleteDoc } from 'firebase/firestore';
 import { TicketCard } from '../tickets/TicketCard';
 import { TicketForm } from '../tickets/TicketForm';
 import { SettingsPage } from '../settings/SettingsPage';
 import { useToast } from '../ui/toast-container';
 
+interface TicketType {
+  id: string;
+  classroom: string;
+  issueDescription: string;
+  issueType: string;
+  status: 'pending' | 'approved' | 'in-progress' | 'resolved' | 'rejected';
+  // Add any other fields that a ticket might have
+}
+
 export const StudentDashboard: React.FC = () => {
   const [tickets, setTickets] = useState<TicketType[]>([]);
   const [activeTab, setActiveTab] = useState<'my-tickets' | 'report' | 'settings'>('my-tickets');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'in-progress' | 'resolved'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'in-progress' | 'resolved' | 'rejected'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const { showToast } = useToast();
 
-  const loadTickets = () => {
-    const user = getCurrentUser();
-    if (user) {
-      setTickets(getUserTickets(user.id));
-    }
-  };
-
   useEffect(() => {
-    loadTickets();
-  }, []);
+    if (auth.currentUser) {
+      const q = query(collection(db, 'tickets'), where('userId', '==', auth.currentUser.uid));
+      const unsubscribe = onSnapshot(q, (querySnapshot) => {
+        const userTickets = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TicketType));
+        setTickets(userTickets);
+      });
 
-  const handleDeleteTicket = (ticketId: string) => {
+      return () => unsubscribe();
+    }
+  }, [auth.currentUser]);
+
+  const handleDeleteTicket = async (ticketId: string) => {
     if (confirm('Are you sure you want to delete this ticket?')) {
-      deleteTicketFn(ticketId);
-      loadTickets();
-      showToast('Ticket deleted successfully', 'success');
+      try {
+        await deleteDoc(doc(db, 'tickets', ticketId));
+        showToast('Ticket deleted successfully', 'success');
+      } catch (error) {
+        showToast('Failed to delete ticket', 'error');
+      }
     }
   };
 
@@ -38,6 +51,7 @@ export const StudentDashboard: React.FC = () => {
   const approvedTickets = tickets.filter(t => t.status === 'approved');
   const inProgressTickets = tickets.filter(t => t.status === 'in-progress');
   const resolvedTickets = tickets.filter(t => t.status === 'resolved');
+  const rejectedTickets = tickets.filter(t => t.status === 'rejected');
 
   const filteredTickets = tickets
     .filter(ticket => statusFilter === 'all' || ticket.status === statusFilter)
@@ -52,7 +66,7 @@ export const StudentDashboard: React.FC = () => {
     { label: 'Approved', count: approvedTickets.length, icon: CheckCircle, color: 'bg-[#1DB954]' },
     { label: 'In Progress', count: inProgressTickets.length, icon: AlertCircle, color: 'bg-[#3942A7]' },
     { label: 'Resolved', count: resolvedTickets.length, icon: CheckCircle, color: 'bg-[#1DB954]' },
-    { label: 'Total', count: tickets.length, icon: FileText, color: 'bg-[#1B1F50]' },
+    { label: 'Rejected', count: rejectedTickets.length, icon: XCircle, color: 'bg-[#FF4D4F]' },
   ];
 
   const tabs = [
@@ -173,6 +187,16 @@ export const StudentDashboard: React.FC = () => {
               >
                 Resolved ({resolvedTickets.length})
               </button>
+              <button
+                onClick={() => setStatusFilter('rejected')}
+                className={`px-4 py-2 rounded-lg transition-all whitespace-nowrap ${
+                  statusFilter === 'rejected'
+                    ? 'bg-[#FF4D4F] text-white'
+                    : 'bg-white text-[#7A7A7A] border border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                Rejected ({rejectedTickets.length})
+              </button>
             </div>
 
             {/* Search */}
@@ -220,7 +244,7 @@ export const StudentDashboard: React.FC = () => {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
           >
-            <TicketForm onSuccess={loadTickets} />
+            <TicketForm onSuccess={() => setActiveTab('my-tickets')} />
           </motion.div>
         )}
 

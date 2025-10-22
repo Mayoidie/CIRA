@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { User, Mail, IdCard, Lock, Save } from 'lucide-react';
-import { getCurrentUser, updateUser } from '../../lib/mockData';
 import { useToast } from '../ui/toast-container';
+import { auth } from '../../lib/firebase';
+import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 
 export const SettingsPage: React.FC = () => {
-  const user = getCurrentUser();
+  const [user, setUser] = useState<any>(null);
   const [passwords, setPasswords] = useState({
     current: '',
     new: '',
@@ -14,6 +15,11 @@ export const SettingsPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, boolean>>({});
   const { showToast } = useToast();
+
+  useEffect(() => {
+    const currentUserData = JSON.parse(localStorage.getItem('currentUser') || '{}');
+    setUser(currentUserData);
+  }, []);
 
   if (!user) return null;
 
@@ -43,19 +49,10 @@ export const SettingsPage: React.FC = () => {
     e.preventDefault();
     setErrors({});
 
-    // Validate fields
     const newErrors: Record<string, boolean> = {};
-
     if (!passwords.current) newErrors.current = true;
     if (!passwords.new) newErrors.new = true;
     if (!passwords.confirm) newErrors.confirm = true;
-
-    if (passwords.current !== user.password) {
-      newErrors.current = true;
-      showToast('Current password is incorrect', 'error');
-      setErrors(newErrors);
-      return;
-    }
 
     if (passwords.new !== passwords.confirm) {
       newErrors.new = true;
@@ -80,12 +77,20 @@ export const SettingsPage: React.FC = () => {
 
     setIsLoading(true);
 
-    setTimeout(() => {
-      updateUser(user.id, { password: passwords.new });
-      showToast('Password changed successfully', 'success');
-      setPasswords({ current: '', new: '', confirm: '' });
+    try {
+      const currentUser = auth.currentUser;
+      if (currentUser && currentUser.email) {
+        const credential = EmailAuthProvider.credential(currentUser.email, passwords.current);
+        await reauthenticateWithCredential(currentUser, credential);
+        await updatePassword(currentUser, passwords.new);
+        showToast('Password changed successfully', 'success');
+        setPasswords({ current: '', new: '', confirm: '' });
+      }
+    } catch (error) {
+      showToast('Failed to change password. Please check your current password.', 'error');
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
   };
 
   return (
