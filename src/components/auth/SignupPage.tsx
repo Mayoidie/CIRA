@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { User, Mail, Lock, IdCard, UserPlus, CheckCircle, LogIn, Send } from 'lucide-react';
+import { User, Mail, Lock, IdCard, UserPlus } from 'lucide-react';
 import { useToast } from '../ui/toast-container';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
 import { auth, db } from '../../lib/firebase';
@@ -9,9 +9,10 @@ import { doc, setDoc } from 'firebase/firestore';
 
 interface SignupPageProps {
   onNavigateToLogin: () => void;
+  onSignupSuccess: (email: string) => void;
 }
 
-export const SignupPage: React.FC<SignupPageProps> = ({ onNavigateToLogin }) => {
+export const SignupPage: React.FC<SignupPageProps> = ({ onNavigateToLogin, onSignupSuccess }) => {
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -21,14 +22,12 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onNavigateToLogin }) => 
     password: '',
     confirmPassword: '',
   });
-  const [showVerificationMessage, setShowVerificationMessage] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, boolean>>({});
   const { showToast } = useToast();
 
   const validateForm = () => {
     const newErrors: Record<string, boolean> = {};
-
     if (!formData.firstName) newErrors.firstName = true;
     if (!formData.lastName) newErrors.lastName = true;
     if (!formData.email) newErrors.email = true;
@@ -36,14 +35,12 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onNavigateToLogin }) => 
     if (!formData.password) newErrors.password = true;
     if (!formData.confirmPassword) newErrors.confirmPassword = true;
 
-    // Email validation
     if (formData.email && !formData.email.endsWith('@plv.edu.ph')) {
       newErrors.email = true;
       showToast('Only @plv.edu.ph email addresses are allowed', 'error');
       return false;
     }
 
-    // Student ID format validation (XX-XXXX)
     const studentIdRegex = /^\d{2}-\d{4}$/;
     if (formData.studentId && !studentIdRegex.test(formData.studentId)) {
       newErrors.studentId = true;
@@ -51,7 +48,6 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onNavigateToLogin }) => 
       return false;
     }
 
-    // Password match validation
     if (formData.password !== formData.confirmPassword) {
       newErrors.password = true;
       newErrors.confirmPassword = true;
@@ -71,7 +67,6 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onNavigateToLogin }) => 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrors({});
-
     if (!validateForm()) return;
 
     setIsLoading(true);
@@ -80,8 +75,6 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onNavigateToLogin }) => 
       const userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
       const user = userCredential.user;
 
-      // This is the corrected data object.
-      // The `requestedRole` field is only added if the role is 'class-representative'.
       await setDoc(doc(db, "users", user.uid), {
         firstName: formData.firstName,
         lastName: formData.lastName,
@@ -91,35 +84,18 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onNavigateToLogin }) => 
         ...(formData.role === 'class-representative' && { requestedRole: 'class-representative' }),
       });
 
-      try {
-        await sendEmailVerification(user);
-      } catch (error) {
-        showToast('Failed to send verification email. You can try resending it from the login page.', 'error');
-      }
+      await sendEmailVerification(user);
+      onSignupSuccess(formData.email);
 
-      setShowVerificationMessage(true);
     } catch (error: any) {
       if (error.code === 'auth/email-already-in-use') {
         showToast('This email is already in use.', 'error');
       } else {
-        // Log the detailed error to the console
         console.error("Detailed Signup Error:", error);
         showToast('Failed to create account. Please try again.', 'error');
       }
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const handleResendVerification = async () => {
-    if (auth.currentUser) {
-      try {
-        await sendEmailVerification(auth.currentUser);
-        showToast('Verification link resent successfully!', 'success');
-      } catch (error) {
-        console.error("Resend Verification Error:", error);
-        showToast('Failed to resend verification email.', 'error');
-      }
     }
   };
 
@@ -132,7 +108,6 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onNavigateToLogin }) => 
         className="w-full max-w-2xl"
       >
         <div className="bg-white rounded-2xl shadow-2xl overflow-hidden">
-          {/* Header */}
           <div className="bg-gradient-to-r from-[#3942A7] to-[#1B1F50] p-8 text-center">
             <motion.div
               initial={{ scale: 0 }}
@@ -150,10 +125,8 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onNavigateToLogin }) => 
             <p className="text-white/80">Create your account</p>
           </div>
 
-          {/* Content */}
           <div className="p-8">
-            {!showVerificationMessage ? (
-              <form onSubmit={handleSignup} className="space-y-5">
+            <form onSubmit={handleSignup} className="space-y-5">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div>
                   <label className="block text-[#1E1E1E] mb-2">First Name</label>
@@ -168,7 +141,6 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onNavigateToLogin }) => 
                     />
                   </div>
                 </div>
-
                 <div>
                   <label className="block text-[#1E1E1E] mb-2">Last Name</label>
                   <div className="relative">
@@ -183,7 +155,6 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onNavigateToLogin }) => 
                   </div>
                 </div>
               </div>
-
               <div>
                 <label className="block text-[#1E1E1E] mb-2">Email (@plv.edu.ph only)</label>
                 <div className="relative">
@@ -197,7 +168,6 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onNavigateToLogin }) => 
                   />
                 </div>
               </div>
-
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div>
                   <label className="block text-[#1E1E1E] mb-2">Role</label>
@@ -210,7 +180,6 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onNavigateToLogin }) => 
                     <option value="class-representative">Class Representative</option>
                   </select>
                 </div>
-
                 <div>
                   <label className="block text-[#1E1E1E] mb-2">Student ID (XX-XXXX)</label>
                   <div className="relative">
@@ -225,7 +194,6 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onNavigateToLogin }) => 
                   </div>
                 </div>
               </div>
-
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div>
                   <label className="block text-[#1E1E1E] mb-2">Password</label>
@@ -240,7 +208,6 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onNavigateToLogin }) => 
                     />
                   </div>
                 </div>
-
                 <div>
                   <label className="block text-[#1E1E1E] mb-2">Confirm Password</label>
                   <div className="relative">
@@ -255,88 +222,35 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onNavigateToLogin }) => 
                   </div>
                 </div>
               </div>
-
-                <motion.button
-                  type="submit"
-                  disabled={isLoading}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  className="w-full bg-gradient-to-r from-[#3942A7] to-[#1B1F50] text-white py-3 rounded-lg hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
-                  {isLoading ? (
-                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    <>
-                      <UserPlus className="w-5 h-5" />
-                      <span>Create Account</span>
-                    </>
-                  )}
-                </motion.button>
-              </form>
-            ) : (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.3 }}
-                className="text-center"
+              <motion.button
+                type="submit"
+                disabled={isLoading}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                className="w-full bg-gradient-to-r from-[#3942A7] to-[#1B1F50] text-white py-3 rounded-lg hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
-                <div className="w-20 h-20 bg-[#1DB954]/10 rounded-full mx-auto mb-6 flex items-center justify-center">
-                  <CheckCircle className="w-10 h-10 text-[#1DB954]" />
-                </div>
-                <h2 className="text-[#1E1E1E] mb-3">Check your Outlook email</h2>
-                <p className="text-[#7A7A7A] mb-2">
-                  A verification link has been sent to:
-                </p>
-                <p className="text-[#3942A7] mb-6">{formData.email}</p>
-                <p className="text-[#7A7A7A] mb-6">
-                  Click the verification link in your email to activate your account.
-                  {formData.role === 'class-representative' && (
-                    <span className="block mt-2 text-[#FFC107]">
-                      Note: Admin approval required for Class Representative role
-                    </span>
-                  )}
-                </p>
-                
-                <div className="space-y-3">
-                  <motion.button
-                    onClick={onNavigateToLogin}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    className="w-full bg-gradient-to-r from-[#3942A7] to-[#1B1F50] text-white py-3 rounded-lg hover:shadow-lg transition-all flex items-center justify-center gap-2"
-                  >
-                    <LogIn className="w-5 h-5" />
-                    <span>Go to Login</span>
-                  </motion.button>
-                  
-                  <motion.button
-                    onClick={handleResendVerification}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    className="w-full bg-white text-[#3942A7] py-3 rounded-lg border-2 border-[#3942A7] hover:bg-[#3942A7]/5 transition-all flex items-center justify-center gap-2"
-                  >
-                    <Send className="w-5 h-5" />
-                    <span>Resend Verification Link</span>
-                  </motion.button>
-                </div>
-              </motion.div>
-            )}
-
-            {!showVerificationMessage && (
-              <div className="mt-6 text-center">
-                <p className="text-[#7A7A7A]">
-                  Already have an account?{' '}
-                  <button
-                    onClick={onNavigateToLogin}
-                    className="text-[#3942A7] hover:underline transition-all"
-                  >
-                    Login
-                  </button>
-                </p>
-              </div>
-            )}
+                {isLoading ? (
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <UserPlus className="w-5 h-5" />
+                    <span>Create Account</span>
+                  </>
+                )}
+              </motion.button>
+            </form>
+            <div className="mt-6 text-center">
+              <p className="text-[#7A7A7A]">
+                Already have an account?{' '}
+                <button
+                  onClick={onNavigateToLogin}
+                  className="text-[#3942A7] hover:underline transition-all"
+                >
+                  Login
+                </button>
+              </p>
+            </div>
           </div>
-
-          {/* Footer */}
           <div className="bg-[#F9FAFB] px-8 py-4 text-center border-t">
             <p className="text-[#7A7A7A]">College of Engineering and Information Technology</p>
           </div>
