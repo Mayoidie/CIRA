@@ -15,29 +15,28 @@ interface TicketType {
   issueType: string;
   status: 'pending' | 'approved' | 'in-progress' | 'resolved' | 'rejected';
   userId: string;
-  // Add any other fields that a ticket might have
+  rejectionNote?: string;
 }
 
 export const ClassRepDashboard: React.FC = () => {
   const [myTickets, setMyTickets] = useState<TicketType[]>([]);
   const [allTickets, setAllTickets] = useState<TicketType[]>([]);
   const [activeTab, setActiveTab] = useState<'my-tickets' | 'review' | 'report' | 'settings'>('my-tickets');
-  const [myTicketsFilter, setMyTicketsFilter] = useState<'all' | 'pending' | 'approved' | 'in-progress' | 'resolved' | 'rejected'>('all');
+  const [myTicketsFilter, setMyTicketsFilter] = useState<'all' | 'approved' | 'in-progress' | 'resolved' | 'rejected'>('all');
   const [reviewFilter, setReviewFilter] = useState<'pending' | 'approved' | 'rejected'>('pending');
   const [searchQuery, setSearchQuery] = useState('');
+  const [rejectionNote, setRejectionNote] = useState<{ [key: string]: string }>({});
   const { showToast } = useToast();
 
   useEffect(() => {
     const currentUser = auth.currentUser;
     if (currentUser) {
-      // Listen for my tickets
       const myTicketsQuery = query(collection(db, 'tickets'), where('userId', '==', currentUser.uid));
       const unsubscribeMyTickets = onSnapshot(myTicketsQuery, (snapshot) => {
         const userTickets = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TicketType));
         setMyTickets(userTickets);
       });
 
-      // Listen for all tickets for review
       const allTicketsQuery = query(collection(db, 'tickets'));
       const unsubscribeAllTickets = onSnapshot(allTicketsQuery, (snapshot) => {
         const allTicketsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TicketType));
@@ -72,9 +71,20 @@ export const ClassRepDashboard: React.FC = () => {
   };
 
   const handleReject = async (ticketId: string) => {
+    const note = rejectionNote[ticketId];
+    if (!note || note.trim() === '') {
+      showToast('Please provide a reason for rejecting the ticket.', 'error');
+      return;
+    }
+
     try {
-      await updateDoc(doc(db, 'tickets', ticketId), { status: 'rejected' });
+      await updateDoc(doc(db, 'tickets', ticketId), { status: 'rejected', rejectionNote: note });
       showToast('Ticket rejected', 'info');
+      setRejectionNote(prev => {
+        const updated = { ...prev };
+        delete updated[ticketId];
+        return updated;
+      });
     } catch (error) {
       showToast('Failed to reject ticket', 'error');
     }
@@ -99,18 +109,18 @@ export const ClassRepDashboard: React.FC = () => {
       ticket.issueType.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
-  const pendingMyTickets = myTickets.filter(t => t.status === 'pending');
-  const approvedMyTickets = myTickets.filter(t => t.status === 'approved');
-  const inProgressMyTickets = myTickets.filter(t => t.status === 'in-progress');
-  const resolvedMyTickets = myTickets.filter(t => t.status === 'resolved');
-  const rejectedMyTickets = myTickets.filter(t => t.status === 'rejected');
+  const pendingReviewTickets = reviewTickets.filter(t => t.status === 'pending');
+  const approvedReviewTickets = reviewTickets.filter(t => t.status === 'approved');
+  const inProgressReviewTickets = reviewTickets.filter(t => t.status === 'in-progress');
+  const resolvedReviewTickets = reviewTickets.filter(t => t.status === 'resolved');
+  const rejectedReviewTickets = reviewTickets.filter(t => t.status === 'rejected');
 
   const stats = [
-    { label: 'Pending', count: pendingMyTickets.length, icon: Clock, color: 'bg-[#FFC107]' },
-    { label: 'Approved', count: approvedMyTickets.length, icon: CheckCircle, color: 'bg-[#1DB954]' },
-    { label: 'In Progress', count: inProgressMyTickets.length, icon: AlertCircle, color: 'bg-[#3942A7]' },
-    { label: 'Resolved', count: resolvedMyTickets.length, icon: CheckCircle, color: 'bg-[#1DB954]' },
-    { label: 'Rejected', count: rejectedMyTickets.length, icon: XCircle, color: 'bg-[#FF4D4F]' },
+    { label: 'Pending Review', count: pendingReviewTickets.length, icon: Clock, color: 'bg-[#FFC107]' },
+    { label: 'Approved', count: approvedReviewTickets.length, icon: CheckCircle, color: 'bg-[#1DB954]' },
+    { label: 'In Progress', count: inProgressReviewTickets.length, icon: AlertCircle, color: 'bg-[#3942A7]' },
+    { label: 'Resolved', count: resolvedReviewTickets.length, icon: CheckCircle, color: 'bg-[#1DB954]' },
+    { label: 'Rejected', count: rejectedReviewTickets.length, icon: XCircle, color: 'bg-[#FF4D4F]' },
   ];
 
   const tabs = [
@@ -119,6 +129,11 @@ export const ClassRepDashboard: React.FC = () => {
     { id: 'report', label: 'Report Issue', icon: AlertCircle },
     { id: 'settings', label: 'Settings', icon: SettingsIcon },
   ];
+
+  const approvedMyTickets = myTickets.filter(t => t.status === 'approved');
+  const inProgressMyTickets = myTickets.filter(t => t.status === 'in-progress');
+  const resolvedMyTickets = myTickets.filter(t => t.status === 'resolved');
+  const rejectedMyTickets = myTickets.filter(t => t.status === 'rejected');
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -191,16 +206,6 @@ export const ClassRepDashboard: React.FC = () => {
                 }`}
               >
                 All ({myTickets.length})
-              </button>
-              <button
-                onClick={() => setMyTicketsFilter('pending')}
-                className={`px-4 py-2 rounded-lg transition-all whitespace-nowrap ${
-                  myTicketsFilter === 'pending'
-                    ? 'bg-[#FFC107] text-[#1E1E1E]'
-                    : 'bg-white text-[#7A7A7A] border border-gray-300 hover:bg-gray-50'
-                }`}
-              >
-                Pending ({pendingMyTickets.length})
               </button>
               <button
                 onClick={() => setMyTicketsFilter('approved')}
@@ -350,13 +355,25 @@ export const ClassRepDashboard: React.FC = () => {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filteredReviewTickets.map(ticket => (
-                  <TicketCard
-                    key={ticket.id}
-                    ticket={ticket}
-                    onApprove={reviewFilter === 'pending' ? handleApprove : undefined}
-                    onReject={reviewFilter === 'pending' ? handleReject : undefined}
-                    showActions={reviewFilter === 'pending'}
-                  />
+                   <div key={ticket.id} className="space-y-4">
+                    <TicketCard
+                      ticket={ticket}
+                      onApprove={reviewFilter === 'pending' ? handleApprove : undefined}
+                      onReject={reviewFilter === 'pending' ? () => handleReject(ticket.id) : undefined}
+                      showActions={reviewFilter === 'pending'}
+                    />
+                    {reviewFilter === 'pending' && (
+                      <div className="bg-white rounded-xl shadow-md p-4 border border-gray-200">
+                        <textarea
+                          value={rejectionNote[ticket.id] || ''}
+                          onChange={(e) => setRejectionNote(prev => ({ ...prev, [ticket.id]: e.target.value }))}
+                          placeholder="Add rejection note..."
+                          rows={3}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3942A7] transition-all"
+                        />
+                      </div>
+                    )}
+                  </div>
                 ))}
               </div>
             )}

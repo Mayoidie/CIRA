@@ -14,7 +14,7 @@ interface TicketType {
   issueDescription: string;
   issueType: string;
   status: 'pending' | 'approved' | 'in-progress' | 'resolved' | 'rejected';
-  // Add any other fields that a ticket might have
+  rejectionNote?: string;
 }
 
 export const StudentDashboard: React.FC = () => {
@@ -244,7 +244,7 @@ export const StudentDashboard: React.FC = () => {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
           >
-            <TicketForm onSuccess={() => setActiveTab('my-tickets')} />
+            <TicketForm onSuccess={() => { setActiveTab('my-tickets'); setStatusFilter('pending'); }} />
           </motion.div>
         )}
 

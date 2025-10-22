@@ -15,6 +15,7 @@ interface Ticket {
   unitId?: string;
   imageUrl?: string;
   resolutionNote?: string;
+  rejectionNote?: string;
 }
 
 interface TicketCardProps {
@@ -70,6 +71,8 @@ export const TicketCard: React.FC<TicketCardProps> = ({
     return 'No date provided';
   };
 
+  const canDelete = ticket.status === 'pending' || ticket.status === 'rejected';
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -89,7 +92,7 @@ export const TicketCard: React.FC<TicketCardProps> = ({
             <p className="text-[#7A7A7A]">{ticket.issueSubtype}</p>
           )}
         </div>
-        {onDelete && (
+        {onDelete && canDelete && (
           <motion.button
             onClick={() => onDelete(ticket.id)}
             whileHover={{ scale: 1.1 }}
@@ -131,6 +134,13 @@ export const TicketCard: React.FC<TicketCardProps> = ({
         <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
           <p className="text-[#1DB954]">Resolution Note:</p>
           <p className="text-[#1E1E1E]">{ticket.resolutionNote}</p>
+        </div>
+      )}
+
+      {ticket.rejectionNote && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
+          <p className="text-[#FF4D4F]">Rejection Note:</p>
+          <p className="text-[#1E1E1E]">{ticket.rejectionNote}</p>
         </div>
       )}
 
