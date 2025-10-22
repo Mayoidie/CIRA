@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { Ticket, Clock, CheckCircle, AlertCircle, FileText, Search, ClipboardList, UserPlus, Users, Trash2, XCircle } from 'lucide-react';
-import { db, auth } from '../../lib/firebase';
-import { collection, query, where, onSnapshot, doc, deleteDoc, updateDoc, writeBatch } from 'firebase/firestore';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Ticket, Clock, CheckCircle, AlertCircle, FileText, Search, ClipboardList, Trash2, XCircle, Settings as SettingsIcon } from 'lucide-react';
+import { db } from '../../lib/firebase';
+import { collection, query, onSnapshot, doc, deleteDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { TicketCard } from '../tickets/TicketCard';
-import { AddAdmin } from '../admin/AddAdmin';
-import { ManageUsers } from '../admin/ManageUsers';
 import { useToast } from '../ui/toast-container';
+import { SettingsPage } from '../settings/SettingsPage';
 
 interface TicketType {
   id: string;
@@ -20,7 +19,7 @@ interface TicketType {
 
 export const AdminDashboard: React.FC = () => {
   const [tickets, setTickets] = useState<TicketType[]>([]);
-  const [activeTab, setActiveTab] = useState<'review' | 'add-admin' | 'manage-users'>('review');
+  const [activeTab, setActiveTab] = useState<'review' | 'settings'>('review');
   const [reviewFilter, setReviewFilter] = useState<'pending' | 'approved' | 'in-progress' | 'resolved' | 'rejected'>('pending');
   const [searchQuery, setSearchQuery] = useState('');
   const [rejectionNote, setRejectionNote] = useState<{ [key: string]: string }>({});
@@ -121,8 +120,7 @@ export const AdminDashboard: React.FC = () => {
 
   const tabs = [
     { id: 'review', label: 'Review Tickets', icon: ClipboardList },
-    { id: 'add-admin', label: 'Add Admin', icon: UserPlus },
-    { id: 'manage-users', label: 'Manage Users', icon: Users },
+    { id: 'settings', label: 'Settings', icon: SettingsIcon },
   ];
 
   return (
@@ -134,7 +132,7 @@ export const AdminDashboard: React.FC = () => {
         className="mb-8"
       >
         <h1 className="text-[#1E1E1E] mb-2">Admin Dashboard</h1>
-        <p className="text-[#7A7A7A]">Manage tickets, users, and system settings</p>
+        <p className="text-[#7A7A7A]">Manage tickets</p>
       </motion.div>
 
       {/* Stats */}
@@ -235,9 +233,9 @@ export const AdminDashboard: React.FC = () => {
                    <div key={ticket.id} className="space-y-4">
                     <TicketCard
                       ticket={ticket}
-                      onApprove={reviewFilter === 'pending' ? handleApprove : undefined}
+                      onApprove={reviewFilter === 'pending' ? () => handleApprove(ticket.id) : undefined}
                       onReject={reviewFilter === 'pending' ? () => handleReject(ticket.id) : undefined}
-                      onDelete={['approved', 'in-progress', 'resolved', 'rejected'].includes(reviewFilter) ? handleDeleteTicket : undefined}
+                      onDelete={['approved', 'in-progress', 'resolved', 'rejected'].includes(reviewFilter) ? () => handleDeleteTicket(ticket.id) : undefined}
                       showActions={reviewFilter === 'pending'}
                     />
                     {reviewFilter === 'pending' && (
@@ -258,25 +256,14 @@ export const AdminDashboard: React.FC = () => {
           </motion.div>
         )}
 
-        {activeTab === 'add-admin' && (
+        {activeTab === 'settings' && (
           <motion.div
-            key="add-admin"
+            key="settings"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
           >
-            <AddAdmin />
-          </motion.div>
-        )}
-
-        {activeTab === 'manage-users' && (
-          <motion.div
-            key="manage-users"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-          >
-            <ManageUsers />
+            <SettingsPage />
           </motion.div>
         )}
       </AnimatePresence>
